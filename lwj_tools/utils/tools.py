@@ -34,6 +34,9 @@ __all__ = [
     "rm_file",
     "clean_dir",
     "get_file_name_and_ext",
+    "get_unprocessed_samples",
+    "cosine_similarity",
+    "load_glove"
 ]
 
 
