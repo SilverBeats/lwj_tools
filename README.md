@@ -21,7 +21,7 @@ pip install .
 ```python
 import pandas as pd
 from typing import List
-from easy_tools.utils.io import FileReader
+from lwj_tools.utils.io import FileReader
 
 # 读 json 文件
 file_path = 'a.json'
@@ -55,7 +55,7 @@ for item in FileReader.read(
 
 ```python
 import pandas as pd
-from easy_tools.utils.io import FileWriter
+from lwj_tools.utils.io import FileWriter
 
 data = {
     'a': 1,
@@ -91,7 +91,7 @@ FileWriter.dump(data, file_path)
 
 ```python
 import time
-from easy_tools.utils.timer import Timer, timecost
+from lwj_tools.utils.timer import Timer, timecost
 
 
 @timecost
@@ -135,8 +135,8 @@ if __name__ == "__main__":
 
 ```python
 import time
-from easy_tools.utils.timer import Timer
-from easy_tools.utils.concurrent import MultiProcessRunner, MultiThreadingRunner
+from lwj_tools.utils.timer import Timer
+from lwj_tools.utils.concurrent import MultiProcessRunner, MultiThreadingRunner
 
 
 def send_post(idx: int):
@@ -182,7 +182,7 @@ if __name__ == "__main__":
 
 ## 4. 杂七杂八工具
 
-在某些场景下，可能会用到一些小工具。自行看代码吧，位置在`easy_tools/utils/tools.py`
+在某些场景下，可能会用到一些小工具。自行看代码吧，位置在`lwj_tools/utils/tools.py`
 
 ## 5. LLM API 请求工具
 
@@ -194,12 +194,12 @@ worker 数量。
 **使用示例**
 
 ```python
-from easy_tools.llms.prompt import PromptTemplate
-from easy_tools.utils.concurrent import MultiThreadingRunner
+from lwj_tools.llms.prompt import PromptTemplate
+from lwj_tools.utils.concurrent import MultiThreadingRunner
 import json
 from json_repair import repair_json
-from easy_tools.llms.chain import LLMChain
-from easy_tools.llms.client import (
+from lwj_tools.llms.chain import LLMChain
+from lwj_tools.llms.client import (
     LLMClient,
     LLMClientGroup,
     LLMResponse,
