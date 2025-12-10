@@ -16,8 +16,8 @@ from transformers import SchedulerType, get_scheduler, set_seed
 
 from .constant import LOGGER
 from .io import FileWriter
+from .io_tools import clean_dir, rm_dir, rm_file
 from .model import convert_data_to_normal_type, data_2_device
-from .tools import clean_dir, rm_dir, rm_file
 
 
 @dataclass
@@ -125,7 +125,7 @@ class TrainingArguments:
         default=True,
         metadata={
             "help": "Whether to clear checkpoint directory after training. If set true, will delete the optimizer, "
-            "scheduler, and train state at last, only keep the checkpoint of model."
+                    "scheduler, and train state at last, only keep the checkpoint of model."
         },
     )
 
@@ -324,10 +324,10 @@ class Trainer(ABC):
             self._config.device = "cpu"
 
         assert (
-            self._config.train_batch_size > 0
+                self._config.train_batch_size > 0
         ), "train_batch_size must be greater than 0."
         assert (
-            self._config.eval_batch_size > 0
+                self._config.eval_batch_size > 0
         ), "eval_batch_size must be greater than 0."
 
         if self._config.resume_checkpoint_path:
@@ -337,28 +337,28 @@ class Trainer(ABC):
 
         assert self._config.epochs > 0, "epochs must be greater than 0."
         assert (
-            self._config.optimizer_name in OPTIM_CLS_MAP
+                self._config.optimizer_name in OPTIM_CLS_MAP
         ), f"{self._config.optimizer_name} not supported yet."
         assert self._config.learning_rate > 0, "learning_rate must be greater than 0."
         assert (
-            self._config.scheduler_name in SCHEDULER_CLS_MAP
+                self._config.scheduler_name in SCHEDULER_CLS_MAP
         ), f"{self._config.scheduler_name} not supported yet."
         assert (
-            0 <= self._config.warmup_ratio <= 1
+                0 <= self._config.warmup_ratio <= 1
         ), "warmup_ratio must be between 0 and 1."
         assert (
-            0 <= self._config.warmup_steps
+                0 <= self._config.warmup_steps
         ), "warmup_steps must be greater than or equal to 0."
         assert (
-            self._config.gradient_accumulation_steps > 0
+                self._config.gradient_accumulation_steps > 0
         ), "gradient_accumulation_steps must be greater than 0."
 
         warmup_ratio = self._config.warmup_ratio
         warmup_steps = self._config.warmup_steps
 
         self._config.total_steps = (
-            int(len(self._train_loader) / self._config.gradient_accumulation_steps)
-            * self._config.epochs
+                int(len(self._train_loader) / self._config.gradient_accumulation_steps)
+                * self._config.epochs
         )
         if warmup_steps != 0:
             if warmup_ratio != 0:
@@ -370,7 +370,7 @@ class Trainer(ABC):
             self._config.warmup_steps = int(self._config.total_steps * warmup_ratio)
 
         assert (
-            self._config.save_total_limit > 0
+                self._config.save_total_limit > 0
         ), "save_total_limit must be greater than 0."
 
         if self._val_loader is not None:
@@ -564,8 +564,8 @@ class Trainer(ABC):
         while True:
             forward_dict = self.model_forward(next(train_loader))
             loss = (
-                forward_dict[self._config.loss_field]
-                / self._config.gradient_accumulation_steps
+                    forward_dict[self._config.loss_field]
+                    / self._config.gradient_accumulation_steps
             )
             loss.backward()
 
@@ -573,9 +573,9 @@ class Trainer(ABC):
             self._train_states["global_steps"] += 1
 
             if (
-                self._train_states["global_steps"]
-                % self._config.gradient_accumulation_steps
-                == 0
+                    self._train_states["global_steps"]
+                    % self._config.gradient_accumulation_steps
+                    == 0
             ):
                 self.before_optim_lr_scheduler()
                 self.optim_lr_scheduler()
@@ -617,8 +617,8 @@ class Trainer(ABC):
         # 1) not use early stopping, steps % eval_steps != 0
         # 2) use early stopping, but not break by early stopping
         if (
-            self._config.patience == 0
-            and self._train_states["steps"] % self._config.eval_steps != 0
+                self._config.patience == 0
+                and self._train_states["steps"] % self._config.eval_steps != 0
         ) or (self._config.patience > 0 and self._train_states["patience"] != 0):
             eval_result = self.evaluate_model()
             self._log(eval_result, Stage.EVAL)

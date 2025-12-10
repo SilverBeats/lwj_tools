@@ -8,15 +8,6 @@ import numpy as np
 import torch.nn as nn
 from torch import Tensor
 
-__all__ = [
-    "calc_model_params",
-    "freeze_model",
-    "unfreeze_model",
-    "clone_module",
-    "data_2_device",
-    "convert_data_to_normal_type",
-]
-
 
 def calc_model_params(model: nn.Module) -> int:
     """calculate model parameters"""

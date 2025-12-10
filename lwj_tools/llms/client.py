@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
@@ -13,8 +13,8 @@ from openai.types.chat.chat_completion import ChatCompletion
 
 from ..errors import LLMClientError
 from ..utils.constant import LOGGER
+from ..utils.helper import get_base64, is_url
 from ..utils.timer import Timer
-from ..utils.tools import get_base64, is_url
 
 
 def encrypted_api_key(api_key: str, keep_size: int = 6) -> str:
