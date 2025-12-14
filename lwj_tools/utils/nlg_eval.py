@@ -9,9 +9,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 from bert_score import score
-from nltk.translate.bleu_score import corpus_bleu, sentence_bleu
+from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
 from nltk.translate.meteor_score import meteor_score
 from rouge import Rouge
+from tqdm import tqdm
 from transformers import BartForConditionalGeneration, BartTokenizer
 
 from .constant import LOGGER
@@ -198,11 +199,14 @@ class GLEU:
 def calc_bleu(
     references: List[str],
     hypothesis: List[str],
+    *,
     tokenizer: Callable = str.split,
     n: Union[int, List[int]] = 4,
     weights: List[Tuple[float, ...]] = None,
-    metrics: Optional[List[str]] = None
+    metrics: Optional[List[str]] = None,
+    verbose: bool = False,
 ) -> Dict[str, List[float]]:
+
     if metrics is None:
         metrics = ['corpus-bleu', 'sentence-bleu']
 
@@ -210,8 +214,17 @@ def calc_bleu(
         'The metrics should be "corpus-bleu" and "sentence-bleu"'
 
     n_samples = len(references)
-    hyp_texts = [tokenizer(sent) for sent in hypothesis]
-    ref_texts = [[tokenizer(sent)] for sent in references]
+
+    if verbose:
+        LOGGER.info(f'Calculating BLEU: {metrics}')
+        data_iter = tqdm(zip(hypothesis, references), total=n_samples, dynamic_ncols=True, desc='Tokenizing')
+    else:
+        data_iter = zip(hypothesis, references)
+
+    hyp_texts, ref_texts = [], []
+    for predict, reference in data_iter:
+        hyp_texts.append(tokenizer(predict))
+        ref_texts.append([tokenizer(reference)])
 
     ns = n
     if isinstance(ns, int):
@@ -232,13 +245,31 @@ def calc_bleu(
     results = {}
 
     if 'corpus-bleu' in metrics:
-        corpus_bleu_scores = corpus_bleu(ref_texts, hyp_texts, weights)
+        LOGGER.info('Calculating corpus-bleu...')
+        corpus_bleu_scores = corpus_bleu(
+            list_of_references=ref_texts,
+            hypotheses=hyp_texts,
+            weights=weights,
+            smoothing_function=SmoothingFunction.method3,
+        )
         results['corpus-bleu'] = corpus_bleu_scores
 
     if 'sentence-bleu' in metrics:
+        LOGGER.info('Calculating sentence-bleu...')
+        if verbose:
+            data_iter = tqdm(zip(hyp_texts, ref_texts), total=n_samples, dynamic_ncols=True, desc='Sentence-BLEU')
+        else:
+            data_iter = zip(hyp_texts, ref_texts)
         sentence_bleu_scores = np.asarray([0.0] * len(weights))
-        for ref, hyp in zip(ref_texts, hyp_texts):
-            cur_sent_scores = np.asarray(sentence_bleu(ref, hyp, weights))
+        for hyp, ref in data_iter:
+            cur_sent_scores = np.asarray(
+                sentence_bleu(
+                    references=ref,
+                    hypothesis=hyp,
+                    weights=weights,
+                    smoothing_function=SmoothingFunction.method3,
+                ),
+            )
             sentence_bleu_scores = sentence_bleu_scores + cur_sent_scores
         sentence_bleu_scores /= n_samples
         sentence_bleu_scores = sentence_bleu_scores.tolist()
@@ -251,17 +282,25 @@ def calc_rouge(
     references: List[str],
     hypothesis: List[str],
     tokenizer: Callable[[str], List[str]] = str.split,
-    metrics: Optional[List[str]] = None
+    metrics: Optional[List[str]] = None,
+    verbose: bool = False,
 ) -> Dict[str, float]:
-    references = [
-        ' '.join(tokenizer(ref))
-        for ref in references
-    ]
-    hypothesis = [
-        ' '.join(tokenizer(hyp))
-        for hyp in hypothesis
-    ]
-    rouge_score = Rouge(metrics).get_scores(hypothesis, references, avg=True)
+
+    if metrics is None:
+        metrics = ['rouge-1', 'rouge-2', 'rouge-l']
+
+    if verbose:
+        LOGGER.info(f'Calculating ROUGE: {metrics}')
+        data_iter = tqdm(zip(hypothesis, references), total=len(hypothesis), dynamic_ncols=True, desc='Tokenizing')
+    else:
+        data_iter = zip(hypothesis, references)
+
+    ref_texts, hyp_texts = [], []
+    for hyp, ref in data_iter:
+        hyp_texts.append(' '.join(tokenizer(hyp)))
+        ref_texts.append(' '.join(tokenizer(ref)))
+
+    rouge_score = Rouge(metrics).get_scores(hyp_texts, ref_texts, avg=True)
     return rouge_score
 
 
@@ -269,11 +308,22 @@ def calc_meteor(
     references: List[str],
     hypothesis: List[str],
     tokenizer: Callable = str.split,
+    verbose: bool = False,
 ) -> float:
     n_samples = len(references)
-    hyp_texts = [tokenizer(sent) for sent in hypothesis]
-    ref_texts = [[tokenizer(sent)] for sent in references]
-    meteor = sum(meteor_score(ref, hyp) for ref, hyp in zip(ref_texts, hyp_texts)) / n_samples
+
+    if verbose:
+        LOGGER.info('Calculating METEOR...')
+        data_iter = tqdm(
+            zip(hypothesis, references), total=n_samples, dynamic_ncols=True, desc='Calculating METEOR ...',
+        )
+    else:
+        data_iter = zip(hypothesis, references)
+
+    total_meteor_score = 0
+    for hyp, ref in data_iter:
+        total_meteor_score += meteor_score([tokenizer(ref)], tokenizer(hyp))
+    meteor = total_meteor_score / n_samples
     return meteor
 
 
@@ -282,11 +332,15 @@ def calc_gleu(
     references: List[str],
     hypothesis: List[str],
     n: Union[int, List[int]] = 4,
+    verbose: bool = False
 ) -> List[float]:
     n_samples = len(sources)
     ns = [n] if isinstance(n, int) else n
     assert all(n > 0 and isinstance(n, int) for n in ns), \
         'The order should be an integer greater than 0'
+
+    if verbose:
+        LOGGER.info(f'Calculating GLEU: {n}')
 
     gleu_scores = []
     for n_order in ns:
@@ -294,7 +348,12 @@ def calc_gleu(
         indices = [0] * n_samples
         stats = [0] * len(range(2 * n_order + 2))
 
-        for i, hyp in enumerate(hypothesis):
+        if verbose:
+            data_iter = tqdm(enumerate(hypothesis), total=n_samples, dynamic_ncols=True, desc=f'GLEU-{n_order}')
+        else:
+            data_iter = enumerate(hypothesis)
+
+        for i, hyp in data_iter:
             stats = [sum(scores) for scores in zip(
                 stats,
                 [s for s in gleu_calculator.gleu_stats(hyp, i, indices[i])],
@@ -310,11 +369,18 @@ def calc_bert_score(
     score_config: BertScoreConfig,
     reduction: str = 'mean',
     round_bits: int = 6,
-    iter_size: int = 5000
+    iter_size: int = 5000,
+    verbose: bool = False
 ) -> Union[Dict[str, float], Dict[str, List[float]]]:
     n_samples = len(references)
     P, R, F = [], [], []
-    for i in range(0, n_samples, iter_size):
+
+    if verbose:
+        LOGGER.info('Calculating BERTScore...')
+        data_iter = tqdm(range(0, n_samples, iter_size), dynamic_ncols=True, desc='Calculating BERTScore ...')
+    else:
+        data_iter = range(0, n_samples, iter_size)
+    for i in data_iter:
         p, r, f = score(
             cands=hypothesis[i:i + iter_size],
             refs=references[i:i + iter_size],
@@ -356,18 +422,31 @@ def calc_bart_score(
     references: List[str],
     hypothesis: List[str],
     score_config: BartScoreConfig,
+    verbose: bool = False
 ) -> float:
+
+    if verbose:
+        LOGGER.info('Calculating BARTScore...')
+
     device = score_config.device
     batch_size = score_config.batch_size
 
+    if verbose:
+        LOGGER.info(f'Loading model from {score_config.name_or_path} ...')
     model = BartForConditionalGeneration.from_pretrained(score_config.name_or_path).to(device).eval()
     tokenizer = BartTokenizer.from_pretrained(score_config.name_or_path)
     loss_fct = nn.NLLLoss(ignore_index=model.config.pad_token_id, reduction='none')
     lsm = nn.LogSoftmax(dim=1)
 
     n_samples = len(references)
+
+    if verbose:
+        data_iter = tqdm(range(0, n_samples, batch_size), dynamic_ncols=True, desc='Calculating BARTScore ...')
+    else:
+        data_iter = range(0, n_samples, batch_size)
+
     score_list = []
-    for i in range(0, n_samples, batch_size):
+    for i in data_iter:
         src_list = hypothesis[i: i + batch_size]
         tgt_list = references[i: i + batch_size]
 
@@ -421,13 +500,25 @@ def calc_greedy_match_score(
     word_2_emb: Dict[str, np.ndarray],
     tokenizer: Optional[Callable] = str.split,
     unk_emb: Optional[np.ndarray] = None,
-):
+    verbose: bool = False
+) -> float:
     emb_dim = list(word_2_emb.values())[0].shape[0]
     if unk_emb is None:
         unk_emb = np.zeros(emb_dim, dtype=np.float32)
 
+    if verbose:
+        LOGGER.info('Calculating Greedy Match Score...')
+        data_iter = tqdm(
+            zip(hypothesis, references),
+            total=len(references),
+            dynamic_ncols=True,
+            desc='Calculating Greedy Match Score ...',
+        )
+    else:
+        data_iter = zip(hypothesis, references)
+
     scores = []
-    for hyp, ref in zip(hypothesis, references):
+    for hyp, ref in data_iter:
         # (seq_len, emb)
         hyp_emb = np.vstack([word_2_emb.get(hyp_token, unk_emb) for hyp_token in tokenizer(hyp)])
         ref_emb = np.vstack([word_2_emb.get(ref_token, unk_emb) for ref_token in tokenizer(ref)])
@@ -436,7 +527,7 @@ def calc_greedy_match_score(
         sim_matrix = cosine_similarity(hyp_emb, ref_emb)
         scores.append(sim_matrix.max())
 
-    return np.mean(scores)
+    return np.mean(scores).item()
 
 
 def calc_embedding_average_score(
@@ -445,12 +536,25 @@ def calc_embedding_average_score(
     word_2_emb: Dict[str, np.ndarray],
     tokenizer: Optional[Callable] = str.split,
     unk_emb: Optional[np.ndarray] = None,
-):
+    verbose: bool = False
+) -> float:
     emb_dim = list(word_2_emb.values())[0].shape[0]
     if unk_emb is None:
         unk_emb = np.zeros(emb_dim, dtype=np.float32)
+
+    if verbose:
+        LOGGER.info('Calculating Embedding Average Score...')
+        data_iter = tqdm(
+            zip(hypothesis, references),
+            total=len(references),
+            dynamic_ncols=True,
+            desc='Calculating Embedding Average Score...',
+        )
+    else:
+        data_iter = zip(hypothesis, references)
+
     scores = []
-    for hyp, ref in zip(hypothesis, references):
+    for hyp, ref in data_iter:
         # (seq_len, emb) -> (1, emb)
         hyp_emb = np.vstack([word_2_emb.get(hyp_token, unk_emb) for hyp_token in tokenizer(hyp)])
         hyp_emb = hyp_emb.mean(axis=0, keepdims=True)
@@ -462,7 +566,7 @@ def calc_embedding_average_score(
         sim_matrix = cosine_similarity(hyp_emb, ref_emb)
         scores.append(sim_matrix[0][0])
 
-    return np.mean(scores)
+    return np.mean(scores).item()
 
 
 def calc_extrema_cosine_similar_score(
@@ -471,13 +575,25 @@ def calc_extrema_cosine_similar_score(
     word_2_emb: Dict[str, np.ndarray],
     tokenizer: Optional[Callable] = str.split,
     unk_emb: Optional[np.ndarray] = None,
-):
+    verbose: bool = False
+) -> float:
     emb_dim = list(word_2_emb.values())[0].shape[0]
     if unk_emb is None:
         unk_emb = np.zeros(emb_dim, dtype=np.float32)
 
+    if verbose:
+        LOGGER.info('Calculating Extrema Cosine Similar Score...')
+        data_iter = tqdm(
+            zip(hypothesis, references),
+            total=len(references),
+            dynamic_ncols=True,
+            desc='Calculating Extrema Cosine Similar Score...',
+        )
+    else:
+        data_iter = zip(hypothesis, references)
+
     scores = []
-    for hyp, ref in zip(hypothesis, references):
+    for hyp, ref in data_iter:
         # (seq_len, emb) -> (1, emb)
         hyp_emb = np.vstack([word_2_emb.get(hyp_token, unk_emb) for hyp_token in tokenizer(hyp)])
         hyp_emb = hyp_emb.max(axis=0, keepdims=True)
@@ -489,19 +605,32 @@ def calc_extrema_cosine_similar_score(
         sim_matrix = cosine_similarity(hyp_emb, ref_emb)
         scores.append(sim_matrix[0][0])
 
-    return np.mean(scores)
+    return np.mean(scores).item()
 
 
 def calc_distinct(
     hypothesis: List[str],
     tokenizer: Callable = str.split,
     n: Union[int, List[int]] = 4,
+    verbose: bool = False
 ) -> List[float]:
     ns = [n] if isinstance(n, int) else n
     assert all(n > 0 and isinstance(n, int) for n in ns), 'The order should be an integer greater than 0.'
 
     ngrams: Dict[int, Counter] = {n: Counter() for n in ns}
-    for hyp in hypothesis:
+    
+    if verbose:
+        LOGGER.info(f'Calculating Distinct: {ns}')
+        data_iter = tqdm(
+            hypothesis,
+            total=len(hypothesis),
+            dynamic_ncols=True,
+            desc='Calculating Distinct ...',
+        )
+    else:
+        data_iter = hypothesis
+
+    for hyp in data_iter:
         hyp_words: List[str] = tokenizer(hyp)
         for n in ns:
             for i in range(len(hyp_words) - n + 1):
@@ -537,45 +666,48 @@ class NLGEvaluator:
         self,
         metric_list: List[NLGMetric],
         tokenizer: Callable[[str], List[str]] = str.split,
-        use_overlap: bool = False,
-        use_embedding: bool = False,
-        use_pretrained: bool = False,
-        use_diversity: bool = False,
-        omit_metric_list: List[NLGMetric] = None,
-        bert_score_config: Dict[str, Any] = None,
-        bart_score_config: Dict[str, Any] = None,
+        use_overlap: Optional[bool] = None,
+        use_embedding: Optional[bool] = None,
+        use_pretrained: Optional[bool] = None,
+        use_diversity: Optional[bool] = None,
+        omit_metric_list: Optional[List[NLGMetric]] = None,
+        bert_score_config: Optional[BertScoreConfig] = None,
+        bart_score_config: Optional[BartScoreConfig] = None,
         glove_path: Optional[str] = None,
         word_2_emb: Optional[Dict[str, Union[np.ndarray, torch.Tensor]]] = None,
         glove_skip_first_row: bool = False,
+        verbose: bool = False
     ):
         """
         Args:
-            metric_list: 具体使用的指标
-            tokenizer: 分词器, 默认str.split
-            use_overlap: 是否使用 词重叠指标
-            use_embedding: 是否使用 词嵌入指标
-            use_pretrained: 是否使用 预训练模型指标
-            use_diversity: 是否使用 多样性指标
-            omit_metric_list: 不使用的指标
-            bert_score_config: 配置请参考 bert_score.score
-            bart_score_config: 配置请参考 https://github.com/neulab/BARTScore
-            glove_path: 词向量文件
-            word_2_emb: 词嵌入字典 (优先级更高)
-            glove_skip_first_row: glove 文件是否跳过第一行, 有些文件第一行可能记录着词汇数量和维度
+            metric_list: The specific metric used
+            tokenizer: Tokenizer, default str.split
+            use_overlap: Whether to use the word overlap metric
+            use_embedding: Whether to use the word embedding metric
+            use_pretrained: Whether to use the pre-trained model metric
+            use_diversity: Whether the diversity metric is used
+            omit_metric_list: Unused metrics
+            bert_score_config: For configuration, please refer to bert_score.score
+            Please refer to the https://github.com/neulab/BARTScore
+            glove_path: Word vector file path
+            word_2_emb: Word Embedding Dictionary (higher priority)
+            glove_skip_first_row: Whether the first line of the glove file is skipped. In some files, the first line
+            may record the number of words and dimensions
+            verbose: Log printing
         """
         if omit_metric_list is None:
             omit_metric_list = []
 
-        if not use_overlap:
+        if use_overlap is not None and not use_overlap:
             omit_metric_list.extend(self.METRICS['overlap'])
 
-        if not use_embedding:
+        if use_embedding is not None and not use_embedding:
             omit_metric_list.extend(self.METRICS['embedding'])
 
-        if not use_pretrained:
+        if use_pretrained is not None and not use_pretrained:
             omit_metric_list.extend(self.METRICS['pretrained'])
 
-        if not use_diversity:
+        if use_diversity is not None and not use_diversity:
             omit_metric_list.extend(self.METRICS['diversity'])
 
         self.metric_list = [metric for metric in metric_list if metric not in omit_metric_list]
@@ -593,10 +725,12 @@ class NLGEvaluator:
                 LOGGER.info(f'Loading glove file from : {glove_path}')
                 self.word_2_emb = load_glove(glove_path, glove_skip_first_row)
 
-        self.tokenizer = tokenizer
+        self.tokenizer = lambda s: list(filter(lambda token: len(token.strip()) > 0, tokenizer(s)))
 
         self.bert_score_config = bert_score_config if bert_score_config else BertScoreConfig('roberta-large')
         self.bart_score_config = bart_score_config if bart_score_config else BartScoreConfig()
+
+        self.verbose = verbose
 
     def __call__(
         self,
@@ -658,7 +792,8 @@ class NLGEvaluator:
                 func = self.FUN_MAP[metric]
                 func_kwargs: Dict[str, Any] = {
                     'hypothesis': hypothesis,
-                    'references': references
+                    'references': references,
+                    'verbose': self.verbose
                 }
                 if metric in self.METRICS['overlap']:
                     func_kwargs['tokenizer'] = self.tokenizer

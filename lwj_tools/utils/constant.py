@@ -3,4 +3,4 @@
 
 from .helper import get_logger
 
-LOGGER = get_logger("easy_tools")
+LOGGER = get_logger("lwj_tools")
