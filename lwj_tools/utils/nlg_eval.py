@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from bert_score import score
-from nltk.translate.bleu_score import SmoothingFunction, corpus_bleu, sentence_bleu
+from nltk.translate.bleu_score import corpus_bleu, sentence_bleu
 from nltk.translate.meteor_score import meteor_score
 from rouge import Rouge
 from tqdm import tqdm
@@ -250,7 +250,6 @@ def calc_bleu(
             list_of_references=ref_texts,
             hypotheses=hyp_texts,
             weights=weights,
-            smoothing_function=SmoothingFunction.method3,
         )
         results['corpus-bleu'] = corpus_bleu_scores
 
@@ -267,7 +266,6 @@ def calc_bleu(
                     references=ref,
                     hypothesis=hyp,
                     weights=weights,
-                    smoothing_function=SmoothingFunction.method3,
                 ),
             )
             sentence_bleu_scores = sentence_bleu_scores + cur_sent_scores
@@ -618,7 +616,7 @@ def calc_distinct(
     assert all(n > 0 and isinstance(n, int) for n in ns), 'The order should be an integer greater than 0.'
 
     ngrams: Dict[int, Counter] = {n: Counter() for n in ns}
-    
+
     if verbose:
         LOGGER.info(f'Calculating Distinct: {ns}')
         data_iter = tqdm(

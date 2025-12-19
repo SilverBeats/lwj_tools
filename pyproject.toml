@@ -21,17 +21,13 @@ dependencies = [
     "openpyxl",
     "regex",
     "omegaconf",
-    "httpx",
-    "json-repair",
-    "nltk",
-    "jieba",
-    "rouge",
-    "bert_score"
+    "httpx"
 ]
 
 [project.optional-dependencies]
-torch = ["torch"]
-openai = ["openai"]
-ollama = ["ollama"]
+model = ["torch"]
+llms = ["openai"]
+nlgeval = ["openai", "torch", "jieba", "rouge", "bert_score", "nltk", "transformers"]
+all = ["openai", "torch", "jieba", "rouge", "bert_score", "nltk",  "transformers"]
 
 [tool.setuptools.packages.find]

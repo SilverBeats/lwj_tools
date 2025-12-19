@@ -3,6 +3,7 @@
 
 import os
 import traceback
+import warnings
 from abc import ABC
 from concurrent.futures import as_completed
 from concurrent.futures.process import ProcessPoolExecutor
@@ -60,8 +61,12 @@ class ConcurrentRunner(ABC):
             try:
                 n_samples = len(samples)
             except TypeError:
-                samples = list(samples)
-                n_samples = len(samples)
+                try:
+                    samples = list(samples)
+                    n_samples = len(samples)
+                except Exception as e:
+                    warnings.warn(f"{e}\nCan't get length of samples. Please specify n_samples manually.")
+                    n_samples = None
 
         wrapper_func = partial(
             wrapper,
