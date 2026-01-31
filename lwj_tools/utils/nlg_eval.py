@@ -793,6 +793,10 @@ class NLGEvaluator:
                     'references': references,
                     'verbose': self.verbose
                 }
+
+                if metric == NLGMetric.DISTINCT:
+                    func_kwargs.pop('references')
+
                 if metric in self.METRICS['overlap']:
                     func_kwargs['tokenizer'] = self.tokenizer
 

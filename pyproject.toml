@@ -21,13 +21,15 @@ dependencies = [
     "openpyxl",
     "regex",
     "omegaconf",
-    "httpx"
+    "httpx",
+    "matplotlib",
+    "seaborn"
 ]
 
 [project.optional-dependencies]
 model = ["torch"]
 llms = ["openai"]
-nlgeval = ["openai", "torch", "jieba", "rouge", "bert_score", "nltk", "transformers"]
-all = ["openai", "torch", "jieba", "rouge", "bert_score", "nltk",  "transformers"]
+nlgeval = ["torch", "jieba", "rouge", "bert_score", "nltk", "transformers"]
+all = ["openai", "torch", "jieba", "rouge", "bert_score", "nltk", "transformers"]
 
 [tool.setuptools.packages.find]
