@@ -5,4 +5,16 @@
 
 ```shell
 pip install .
+
+# 若是使用 lwj_tools.utils.model.py 的代码
+pip install ".[model]"
+
+# 若是使用 lwj_tools.llms 中的代码
+pip install ".[llms]"
+
+# 若是使用 lwj_tools.evaluators.nlg 中的代码
+pip install ".[nlgeval]"
+
+# 若是使用所有代码
+pip install ".[all]"
 ```

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lwj_tools"
-version = "0.1.1"
+version = "1.0.0"
 description = "This repository stores the tool methods or tool classes that I commonly use in my daily coding process."
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [{ name = "silverbeats", email = "silverbeats@qq.com" }]
@@ -20,7 +20,6 @@ dependencies = [
     "pandas",
     "openpyxl",
     "regex",
-    "omegaconf",
     "httpx",
     "matplotlib",
     "seaborn"
@@ -31,5 +30,4 @@ model = ["torch"]
 llms = ["openai"]
 nlgeval = ["torch", "jieba", "rouge", "bert_score", "nltk", "transformers"]
 all = ["openai", "torch", "jieba", "rouge", "bert_score", "nltk", "transformers"]
-
 [tool.setuptools.packages.find]
