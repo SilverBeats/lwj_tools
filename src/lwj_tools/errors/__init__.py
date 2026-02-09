@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+SUCCEED_CODE = "success"
+BASE_ERROR_CODE = "E100"
+
+
+class BaseError(Exception):
+    """基础错误类
+
+    Args:
+        message: 错误信息
+        code: 错误码
+    """
+
+    def __init__(
+        self,
+        message: str = "",
+        code: str = BASE_ERROR_CODE,
+    ):
+        self.message = message
+        self.code = code
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(message={self.message},code={self.code})"
+
+    def __str__(self):
+        return self.__repr__()
+
+
+class LLMClientError(BaseError):
+    """llm客户端错误"""
+
+    def __init__(self, message: str = ""):
+        code = "E201"
+        super().__init__(message, code)
+
+
+class PromptTemplateGeneratingError(BaseError):
+    """提示模板生成错误"""
+
+    def __init__(self, message: str = ""):
+        code = "E202"
+        super().__init__(message, code)
+
+
+class PromptTemplateParsingError(BaseError):
+    """提示模板解析错误"""
+
+    def __init__(self, message: str = ""):
+        code = "E203"
+        super().__init__(message, code)
+
+
+class FileTypeError(BaseError):
+    """文件类型错误"""
+
+    def __init__(self, message: str = ""):
+        code = "E301"
+        super().__init__(message, code)
+
+
+class FileReadError(BaseError):
+    """文件读取错误"""
+
+    def __init__(self, message: str = ""):
+        code = "E302"
+        super().__init__(message, code)
+
+
+class FileWriteError(BaseError):
+    """文件写入错误"""
+
+    def __init__(self, message: str = ""):
+        code = "E303"
+        super().__init__(message, code)
+
+
+class ConcurrentError(BaseError):
+    """并发错误"""
+
+    def __init__(self, message: str = ""):
+        code = "E401"
+        super().__init__(message, code)
