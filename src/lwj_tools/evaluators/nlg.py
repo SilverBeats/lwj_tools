@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import math
 import traceback
 from collections import Counter
@@ -12,12 +15,12 @@ from bert_score import score
 from nltk.translate.bleu_score import corpus_bleu, sentence_bleu
 from nltk.translate.meteor_score import meteor_score
 from rouge import Rouge
+from tqdm import tqdm
 from transformers import BartForConditionalGeneration, BartTokenizer
 
-from .constant import LOGGER
-from .tools import cosine_similarity, load_glove
+from ..utils.common import cosine_similarity, get_logger, load_glove
 
-__all__ = ["NLGMetric", "BartScoreConfig", "BertScoreConfig", "NLGEvaluator"]
+LOGGER = get_logger('lwj_tools')
 
 
 @unique
@@ -54,11 +57,11 @@ class BartScoreConfig:
 @dataclass
 class BertScoreConfig:
     """
-    In most cases, only four parameters are needed:
-    model_type, num_layers, device, and batch_size
+    在大多数情况下，只需要四个参数：
+    `model_type`、`num_layers`、`device` 和 `batch_size`
 
-    If model_type uses the local path, then num_layers need to be explicitly given
-    If model_type is the name on hf, then num_layers can be omitted
+    如果 `model_type` 使用本地路径，则需要显式地给出 `num_layers`
+    如果 `model_type` 是 hugging face 上的名称，那么 `num_layers` 可以省略
     """
     model_type: str
     num_layers: Optional[int] = None
@@ -133,25 +136,24 @@ class GLEU:
         ]
 
     def process_references(self, references: List[List[str]], ):
-        r"""
-            references = [
-                [r00, r01, r02, ...], reference file 0
-                [r10, r11, r12, ...], reference file 1
-                ...
-            ]
-            ref_groups: List[List[str]]= [
-                [r00, r10, ...],
-                [r01, r11, ...],
-                [r02, r12, ...],
-                ...
-            ]
-            ref_lens: List[List[int]] = [
-                [len(r00.split()), len(r10.split()), ...],
-                [len(r01.split()), len(r11.split()), ...],
-                [len(r02.split()), len(r12.split()), ...],
-                ...
-            ]
-        """
+        # references = [
+        #     [r00, r01, r02, ...], reference file 0
+        #     [r10, r11, r12, ...], reference file 1
+        #     ...
+        # ]
+        # ref_groups: List[List[str]]= [
+        #     [r00, r10, ...],
+        #     [r01, r11, ...],
+        #     [r02, r12, ...],
+        #     ...
+        # ]
+        # ref_lens: List[List[int]] = [
+        #     [len(r00.split()), len(r10.split()), ...],
+        #     [len(r01.split()), len(r11.split()), ...],
+        #     [len(r02.split()), len(r12.split()), ...],
+        #     ...
+        # ]
+
         for i in range(self.samples):
             self.refs_group.append([references[j][i] for j in range(len(references))])
 
@@ -199,11 +201,14 @@ class GLEU:
 def calc_bleu(
     references: List[str],
     hypothesis: List[str],
+    *,
     tokenizer: Callable = str.split,
     n: Union[int, List[int]] = 4,
     weights: List[Tuple[float, ...]] = None,
-    metrics: Optional[List[str]] = None
+    metrics: Optional[List[str]] = None,
+    verbose: bool = False,
 ) -> Dict[str, List[float]]:
+
     if metrics is None:
         metrics = ['corpus-bleu', 'sentence-bleu']
 
@@ -211,8 +216,17 @@ def calc_bleu(
         'The metrics should be "corpus-bleu" and "sentence-bleu"'
 
     n_samples = len(references)
-    hyp_texts = [tokenizer(sent) for sent in hypothesis]
-    ref_texts = [[tokenizer(sent)] for sent in references]
+
+    if verbose:
+        LOGGER.info(f'Calculating BLEU: {metrics}')
+        data_iter = tqdm(zip(hypothesis, references), total=n_samples, dynamic_ncols=True, desc='Tokenizing')
+    else:
+        data_iter = zip(hypothesis, references)
+
+    hyp_texts, ref_texts = [], []
+    for predict, reference in data_iter:
+        hyp_texts.append(tokenizer(predict))
+        ref_texts.append([tokenizer(reference)])
 
     ns = n
     if isinstance(ns, int):
@@ -233,13 +247,29 @@ def calc_bleu(
     results = {}
 
     if 'corpus-bleu' in metrics:
-        corpus_bleu_scores = corpus_bleu(ref_texts, hyp_texts, weights)
+        LOGGER.info('Calculating corpus-bleu...')
+        corpus_bleu_scores = corpus_bleu(
+            list_of_references=ref_texts,
+            hypotheses=hyp_texts,
+            weights=weights,
+        )
         results['corpus-bleu'] = corpus_bleu_scores
 
     if 'sentence-bleu' in metrics:
+        LOGGER.info('Calculating sentence-bleu...')
+        if verbose:
+            data_iter = tqdm(zip(hyp_texts, ref_texts), total=n_samples, dynamic_ncols=True, desc='Sentence-BLEU')
+        else:
+            data_iter = zip(hyp_texts, ref_texts)
         sentence_bleu_scores = np.asarray([0.0] * len(weights))
-        for ref, hyp in zip(ref_texts, hyp_texts):
-            cur_sent_scores = np.asarray(sentence_bleu(ref, hyp, weights))
+        for hyp, ref in data_iter:
+            cur_sent_scores = np.asarray(
+                sentence_bleu(
+                    references=ref,
+                    hypothesis=hyp,
+                    weights=weights,
+                ),
+            )
             sentence_bleu_scores = sentence_bleu_scores + cur_sent_scores
         sentence_bleu_scores /= n_samples
         sentence_bleu_scores = sentence_bleu_scores.tolist()
@@ -252,17 +282,25 @@ def calc_rouge(
     references: List[str],
     hypothesis: List[str],
     tokenizer: Callable[[str], List[str]] = str.split,
-    metrics: Optional[List[str]] = None
+    metrics: Optional[List[str]] = None,
+    verbose: bool = False,
 ) -> Dict[str, float]:
-    references = [
-        ' '.join(tokenizer(ref))
-        for ref in references
-    ]
-    hypothesis = [
-        ' '.join(tokenizer(hyp))
-        for hyp in hypothesis
-    ]
-    rouge_score = Rouge(metrics).get_scores(hypothesis, references, avg=True)
+
+    if metrics is None:
+        metrics = ['rouge-1', 'rouge-2', 'rouge-l']
+
+    if verbose:
+        LOGGER.info(f'Calculating ROUGE: {metrics}')
+        data_iter = tqdm(zip(hypothesis, references), total=len(hypothesis), dynamic_ncols=True, desc='Tokenizing')
+    else:
+        data_iter = zip(hypothesis, references)
+
+    ref_texts, hyp_texts = [], []
+    for hyp, ref in data_iter:
+        hyp_texts.append(' '.join(tokenizer(hyp)))
+        ref_texts.append(' '.join(tokenizer(ref)))
+
+    rouge_score = Rouge(metrics).get_scores(hyp_texts, ref_texts, avg=True)
     return rouge_score
 
 
@@ -270,11 +308,22 @@ def calc_meteor(
     references: List[str],
     hypothesis: List[str],
     tokenizer: Callable = str.split,
+    verbose: bool = False,
 ) -> float:
     n_samples = len(references)
-    hyp_texts = [tokenizer(sent) for sent in hypothesis]
-    ref_texts = [[tokenizer(sent)] for sent in references]
-    meteor = sum(meteor_score(ref, hyp) for ref, hyp in zip(ref_texts, hyp_texts)) / n_samples
+
+    if verbose:
+        LOGGER.info('Calculating METEOR...')
+        data_iter = tqdm(
+            zip(hypothesis, references), total=n_samples, dynamic_ncols=True, desc='Calculating METEOR ...',
+        )
+    else:
+        data_iter = zip(hypothesis, references)
+
+    total_meteor_score = 0
+    for hyp, ref in data_iter:
+        total_meteor_score += meteor_score([tokenizer(ref)], tokenizer(hyp))
+    meteor = total_meteor_score / n_samples
     return meteor
 
 
@@ -283,11 +332,15 @@ def calc_gleu(
     references: List[str],
     hypothesis: List[str],
     n: Union[int, List[int]] = 4,
+    verbose: bool = False
 ) -> List[float]:
     n_samples = len(sources)
     ns = [n] if isinstance(n, int) else n
     assert all(n > 0 and isinstance(n, int) for n in ns), \
         'The order should be an integer greater than 0'
+
+    if verbose:
+        LOGGER.info(f'Calculating GLEU: {n}')
 
     gleu_scores = []
     for n_order in ns:
@@ -295,7 +348,12 @@ def calc_gleu(
         indices = [0] * n_samples
         stats = [0] * len(range(2 * n_order + 2))
 
-        for i, hyp in enumerate(hypothesis):
+        if verbose:
+            data_iter = tqdm(enumerate(hypothesis), total=n_samples, dynamic_ncols=True, desc=f'GLEU-{n_order}')
+        else:
+            data_iter = enumerate(hypothesis)
+
+        for i, hyp in data_iter:
             stats = [sum(scores) for scores in zip(
                 stats,
                 [s for s in gleu_calculator.gleu_stats(hyp, i, indices[i])],
@@ -311,11 +369,18 @@ def calc_bert_score(
     score_config: BertScoreConfig,
     reduction: str = 'mean',
     round_bits: int = 6,
-    iter_size: int = 5000
+    iter_size: int = 5000,
+    verbose: bool = False
 ) -> Union[Dict[str, float], Dict[str, List[float]]]:
     n_samples = len(references)
     P, R, F = [], [], []
-    for i in range(0, n_samples, iter_size):
+
+    if verbose:
+        LOGGER.info('Calculating BERTScore...')
+        data_iter = tqdm(range(0, n_samples, iter_size), dynamic_ncols=True, desc='Calculating BERTScore ...')
+    else:
+        data_iter = range(0, n_samples, iter_size)
+    for i in data_iter:
         p, r, f = score(
             cands=hypothesis[i:i + iter_size],
             refs=references[i:i + iter_size],
@@ -357,18 +422,31 @@ def calc_bart_score(
     references: List[str],
     hypothesis: List[str],
     score_config: BartScoreConfig,
+    verbose: bool = False
 ) -> float:
+
+    if verbose:
+        LOGGER.info('Calculating BARTScore...')
+
     device = score_config.device
     batch_size = score_config.batch_size
 
+    if verbose:
+        LOGGER.info(f'Loading model from {score_config.name_or_path} ...')
     model = BartForConditionalGeneration.from_pretrained(score_config.name_or_path).to(device).eval()
     tokenizer = BartTokenizer.from_pretrained(score_config.name_or_path)
     loss_fct = nn.NLLLoss(ignore_index=model.config.pad_token_id, reduction='none')
     lsm = nn.LogSoftmax(dim=1)
 
     n_samples = len(references)
+
+    if verbose:
+        data_iter = tqdm(range(0, n_samples, batch_size), dynamic_ncols=True, desc='Calculating BARTScore ...')
+    else:
+        data_iter = range(0, n_samples, batch_size)
+
     score_list = []
-    for i in range(0, n_samples, batch_size):
+    for i in data_iter:
         src_list = hypothesis[i: i + batch_size]
         tgt_list = references[i: i + batch_size]
 
@@ -422,13 +500,25 @@ def calc_greedy_match_score(
     word_2_emb: Dict[str, np.ndarray],
     tokenizer: Optional[Callable] = str.split,
     unk_emb: Optional[np.ndarray] = None,
-):
+    verbose: bool = False
+) -> float:
     emb_dim = list(word_2_emb.values())[0].shape[0]
     if unk_emb is None:
         unk_emb = np.zeros(emb_dim, dtype=np.float32)
 
+    if verbose:
+        LOGGER.info('Calculating Greedy Match Score...')
+        data_iter = tqdm(
+            zip(hypothesis, references),
+            total=len(references),
+            dynamic_ncols=True,
+            desc='Calculating Greedy Match Score ...',
+        )
+    else:
+        data_iter = zip(hypothesis, references)
+
     scores = []
-    for hyp, ref in zip(hypothesis, references):
+    for hyp, ref in data_iter:
         # (seq_len, emb)
         hyp_emb = np.vstack([word_2_emb.get(hyp_token, unk_emb) for hyp_token in tokenizer(hyp)])
         ref_emb = np.vstack([word_2_emb.get(ref_token, unk_emb) for ref_token in tokenizer(ref)])
@@ -437,7 +527,7 @@ def calc_greedy_match_score(
         sim_matrix = cosine_similarity(hyp_emb, ref_emb)
         scores.append(sim_matrix.max())
 
-    return np.mean(scores)
+    return np.mean(scores).item()
 
 
 def calc_embedding_average_score(
@@ -446,12 +536,25 @@ def calc_embedding_average_score(
     word_2_emb: Dict[str, np.ndarray],
     tokenizer: Optional[Callable] = str.split,
     unk_emb: Optional[np.ndarray] = None,
-):
+    verbose: bool = False
+) -> float:
     emb_dim = list(word_2_emb.values())[0].shape[0]
     if unk_emb is None:
         unk_emb = np.zeros(emb_dim, dtype=np.float32)
+
+    if verbose:
+        LOGGER.info('Calculating Embedding Average Score...')
+        data_iter = tqdm(
+            zip(hypothesis, references),
+            total=len(references),
+            dynamic_ncols=True,
+            desc='Calculating Embedding Average Score...',
+        )
+    else:
+        data_iter = zip(hypothesis, references)
+
     scores = []
-    for hyp, ref in zip(hypothesis, references):
+    for hyp, ref in data_iter:
         # (seq_len, emb) -> (1, emb)
         hyp_emb = np.vstack([word_2_emb.get(hyp_token, unk_emb) for hyp_token in tokenizer(hyp)])
         hyp_emb = hyp_emb.mean(axis=0, keepdims=True)
@@ -463,7 +566,7 @@ def calc_embedding_average_score(
         sim_matrix = cosine_similarity(hyp_emb, ref_emb)
         scores.append(sim_matrix[0][0])
 
-    return np.mean(scores)
+    return np.mean(scores).item()
 
 
 def calc_extrema_cosine_similar_score(
@@ -472,13 +575,25 @@ def calc_extrema_cosine_similar_score(
     word_2_emb: Dict[str, np.ndarray],
     tokenizer: Optional[Callable] = str.split,
     unk_emb: Optional[np.ndarray] = None,
-):
+    verbose: bool = False
+) -> float:
     emb_dim = list(word_2_emb.values())[0].shape[0]
     if unk_emb is None:
         unk_emb = np.zeros(emb_dim, dtype=np.float32)
 
+    if verbose:
+        LOGGER.info('Calculating Extrema Cosine Similar Score...')
+        data_iter = tqdm(
+            zip(hypothesis, references),
+            total=len(references),
+            dynamic_ncols=True,
+            desc='Calculating Extrema Cosine Similar Score...',
+        )
+    else:
+        data_iter = zip(hypothesis, references)
+
     scores = []
-    for hyp, ref in zip(hypothesis, references):
+    for hyp, ref in data_iter:
         # (seq_len, emb) -> (1, emb)
         hyp_emb = np.vstack([word_2_emb.get(hyp_token, unk_emb) for hyp_token in tokenizer(hyp)])
         hyp_emb = hyp_emb.max(axis=0, keepdims=True)
@@ -490,19 +605,32 @@ def calc_extrema_cosine_similar_score(
         sim_matrix = cosine_similarity(hyp_emb, ref_emb)
         scores.append(sim_matrix[0][0])
 
-    return np.mean(scores)
+    return np.mean(scores).item()
 
 
 def calc_distinct(
     hypothesis: List[str],
     tokenizer: Callable = str.split,
     n: Union[int, List[int]] = 4,
+    verbose: bool = False
 ) -> List[float]:
     ns = [n] if isinstance(n, int) else n
     assert all(n > 0 and isinstance(n, int) for n in ns), 'The order should be an integer greater than 0.'
 
     ngrams: Dict[int, Counter] = {n: Counter() for n in ns}
-    for hyp in hypothesis:
+
+    if verbose:
+        LOGGER.info(f'Calculating Distinct: {ns}')
+        data_iter = tqdm(
+            hypothesis,
+            total=len(hypothesis),
+            dynamic_ncols=True,
+            desc='Calculating Distinct ...',
+        )
+    else:
+        data_iter = hypothesis
+
+    for hyp in data_iter:
         hyp_words: List[str] = tokenizer(hyp)
         for n in ns:
             for i in range(len(hyp_words) - n + 1):
@@ -513,7 +641,7 @@ def calc_distinct(
 
 
 class NLGEvaluator:
-    """Calculation of text generation evaluation indicators"""
+    """文本生成评价指标的计算"""
     METRICS = {
         'overlap': [NLGMetric.BLEU, NLGMetric.METEOR, NLGMetric.ROUGE, NLGMetric.GLEU],
         'embedding': [NLGMetric.GREEDY_MATCH, NLGMetric.COSINE_SIMILAR, NLGMetric.EXTREMA_COSINE_SIMILAR],
@@ -538,45 +666,46 @@ class NLGEvaluator:
         self,
         metric_list: List[NLGMetric],
         tokenizer: Callable[[str], List[str]] = str.split,
-        use_overlap: bool = False,
-        use_embedding: bool = False,
-        use_pretrained: bool = False,
-        use_diversity: bool = False,
-        omit_metric_list: List[NLGMetric] = None,
-        bert_score_config: Dict[str, Any] = None,
-        bart_score_config: Dict[str, Any] = None,
+        use_overlap: Optional[bool] = None,
+        use_embedding: Optional[bool] = None,
+        use_pretrained: Optional[bool] = None,
+        use_diversity: Optional[bool] = None,
+        omit_metric_list: Optional[List[NLGMetric]] = None,
+        bert_score_config: Optional[BertScoreConfig] = None,
+        bart_score_config: Optional[BartScoreConfig] = None,
         glove_path: Optional[str] = None,
         word_2_emb: Optional[Dict[str, Union[np.ndarray, torch.Tensor]]] = None,
         glove_skip_first_row: bool = False,
+        verbose: bool = False
     ):
         """
         Args:
-            metric_list: 具体使用的指标
-            tokenizer: 分词器, 默认str.split
-            use_overlap: 是否使用 词重叠指标
-            use_embedding: 是否使用 词嵌入指标
-            use_pretrained: 是否使用 预训练模型指标
-            use_diversity: 是否使用 多样性指标
-            omit_metric_list: 不使用的指标
-            bert_score_config: 配置请参考 bert_score.score
-            bart_score_config: 配置请参考 https://github.com/neulab/BARTScore
-            glove_path: 词向量文件
-            word_2_emb: 词嵌入字典 (优先级更高)
-            glove_skip_first_row: glove 文件是否跳过第一行, 有些文件第一行可能记录着词汇数量和维度
+            metric_list：使用的指标
+            tokenizer: tokenizer，默认 `str.split`
+            use_overlap：是否使用单词重叠度量
+            use_embedding：是否使用单词嵌入度量
+            use_pretrained：是否使用预训练的模型度量
+            use_diversity：是否使用分集度量
+            omit_metric_list：未使用的度量
+            bert_score_config：配置请参考 `bert_score.score` (https://github.com/neulab/BARTScore)
+            glove_path: Word矢量文件路径
+            word_2_emb：词嵌入字典（高优先级）
+            glove_skip_first_row：是否跳过 glove 文件的第一行
+            verbose：日志打印
         """
         if omit_metric_list is None:
             omit_metric_list = []
 
-        if not use_overlap:
+        if use_overlap is not None and not use_overlap:
             omit_metric_list.extend(self.METRICS['overlap'])
 
-        if not use_embedding:
+        if use_embedding is not None and not use_embedding:
             omit_metric_list.extend(self.METRICS['embedding'])
 
-        if not use_pretrained:
+        if use_pretrained is not None and not use_pretrained:
             omit_metric_list.extend(self.METRICS['pretrained'])
 
-        if not use_diversity:
+        if use_diversity is not None and not use_diversity:
             omit_metric_list.extend(self.METRICS['diversity'])
 
         self.metric_list = [metric for metric in metric_list if metric not in omit_metric_list]
@@ -594,10 +723,12 @@ class NLGEvaluator:
                 LOGGER.info(f'Loading glove file from : {glove_path}')
                 self.word_2_emb = load_glove(glove_path, glove_skip_first_row)
 
-        self.tokenizer = tokenizer
+        self.tokenizer = lambda s: list(filter(lambda token: len(token.strip()) > 0, tokenizer(s)))
 
         self.bert_score_config = bert_score_config if bert_score_config else BertScoreConfig('roberta-large')
         self.bart_score_config = bart_score_config if bart_score_config else BartScoreConfig()
+
+        self.verbose = verbose
 
     def __call__(
         self,
@@ -606,50 +737,64 @@ class NLGEvaluator:
         sources: Optional[List[str]] = None,
         specific_config: Optional[Dict[NLGMetric, Dict[str, Any]]] = None
     ):
-        """
+        """批量计算多种自然语言生成（NLG）评估指标。
+
+        该方法用于对生成文本（`hypothesis`）进行多维度自动评估，支持与参考文本（`references`）
+        和源文本（`sources`，如翻译任务中的原文）对比，并可通过 `specific_config` 为每种指标
+        提供自定义配置。
+
         Args:
-            hypothesis: Generate text
-            references: Reference text
-            sources: Optional, suitable for translation/style transfer tasks with original text
-            specific_config: If there are special parameter Settings for the metric calculation method, an example is
-            as follows
+            hypothesis (List[str]): 待评估的生成文本列表。
+            references (Optional[List[str]]): 参考文本（标准答案）列表。大多数指标（如 BLEU、ROUGE）
+                必须提供，且长度需与 `hypothesis` 一致。
+            sources (Optional[List[str]]): 源输入文本列表（例如机器翻译中的原文）。仅 GLEU 指标需要，
+                若提供则长度必须与 `hypothesis` 一致。
+            specific_config (Optional[Dict[NLGMetric, Dict[str, Any]]]): 各指标的自定义配置字典。
+                键为指标枚举值（如 `NLGMetric.BLEU`），值为传递给具体指标函数的参数字典。
 
-        To calculate BLEU-1 to 4, you can directly configure the order `n`, like:
-        >>>   specific_config[NLGMetric.BLEU] = {'n': 4}
-        >>>   specific_config[NLGMetric.BLEU] = {'n': [1, 2, 3, 4]}
-        Alternatively, you can specify the `weights` for each order.
-        >>>   specific_config[NLGMetric.BLEU] = {
-        >>>      'weights': [
-        >>>           (1),
-        >>>           (0.5, 0.5),
-        >>>           (0.3, 0.3, 0.3),
-        >>>           (0.25, 0.25, 0.25, 0.25)
-        >>>      ]
-        >>>  }
-        Also, you can choose to calculate `corpus-bleu`, or `sentence-bleu`, like:
-        >>> specific_config[NLGMetric.BLEU] = {'metrics': ['corpus-bleu', 'sentence-bleu']}
+        Returns:
+            Dict[str, Any]: 以指标名称（字符串）为键、计算结果为值的字典。若某指标计算失败，
+            该指标将被跳过，并在日志中记录错误信息。
 
-        To calculate Rouge, you can directly configure the metrics, like:
-        >>>  # only the following are accepted: rouge-1, rouge-2, rouge-3, rouge-4, rouge-5, and rouge-l
-        >>>  specific_config[NLGMetric.ROUGE] = {'metrics': ['rouge-1', 'rouge-2']}
+        Examples:
+            >>> # 配置 BLEU 计算 1~4 元语法
+            >>> config = {}
+            >>> config[NLGMetric.BLEU] = {'n': 4}
+            >>> # 或显式指定各阶权重
+            >>> config[NLGMetric.BLEU] = {
+            ...     'weights': [
+            ...         (1.0,),
+            ...         (0.5, 0.5),
+            ...         (1/3, 1/3, 1/3),
+            ...         (0.25, 0.25, 0.25, 0.25)
+            ...     ]
+            ... }
+            >>> # 同时计算语料级和句子级 BLEU
+            >>> config[NLGMetric.BLEU] = {'metrics': ['corpus-bleu', 'sentence-bleu']}
 
-        To calculate GLEU-1 to 4, you can directly configure the order `n`, like:
-        >>>   specific_config[NLGMetric.GLEU] = {'n': 4}
-        >>>   specific_config[NLGMetric.GLEU] = {'n': [1, 2, 3, 4]}
+            >>> # 配置 ROUGE 指标（仅支持 rouge-1 至 rouge-5 及 rouge-l）
+            >>> config[NLGMetric.ROUGE] = {'metrics': ['rouge-1', 'rouge-2', 'rouge-l']}
 
-        To calculate diversity score, you can directly configure the order `n`, like:
-        >>>   specific_config[NLGMetric.DISTINCT] = {'n': 4}
-        >>>   specific_config[NLGMetric.DISTINCT] = {'n': [1, 2, 3, 4]}
+            >>> # 配置 GLEU 或 Distinct 的 n-gram 阶数
+            >>> config[NLGMetric.GLEU] = {'n': [1, 2, 3, 4]}
+            >>> config[NLGMetric.DISTINCT] = {'n': 2}
 
-        To calculate bertscore, you can set `round_bits`, the number of decimal places to be retained,  `reduction`,
-        whether to process the result, and `iter_size`.
-        Note that `iter_size` is set to address the issue of memory explosion in cases of large data volumes.
-        For instance, if there are 100,000 samples, and they are directly input to `bert_score.score`, the required
-        memory will exceed 64g.
-        Therefore, the bert_score of the samples can be calculated in batches through iter_size, for example, 5000,
-        and then summarized and sumed/averaged/not processed
-        >>> specific_config[NLGMetric.BERT_SCORE] = {'reduction': 'mean', 'iter_size': 5000, 'round_bits': 6}
+            >>> # 配置 BERTScore：启用批处理防止内存溢出
+            >>> config[NLGMetric.BERT_SCORE] = {
+            ...     'reduction': 'mean',      # 结果聚合方式
+            ...     'iter_size': 5000,        # 每批处理 5000 个样本
+            ...     'round_bits': 6           # 保留小数位数
+            ... }
+
+            >>> # 使用示例
+            >>> evaluator = YourEvaluatorClass()
+            >>> results = evaluator(
+            ...     hypothesis=['你好 世界'],
+            ...     references=['你好 世界'],
+            ...     specific_config=config
+            ... )
         """
+
         assert len(hypothesis) == len(references), \
             'hypothesis and references must have the same length'
 
@@ -659,8 +804,13 @@ class NLGEvaluator:
                 func = self.FUN_MAP[metric]
                 func_kwargs: Dict[str, Any] = {
                     'hypothesis': hypothesis,
-                    'references': references
+                    'references': references,
+                    'verbose': self.verbose
                 }
+
+                if metric == NLGMetric.DISTINCT:
+                    func_kwargs.pop('references')
+
                 if metric in self.METRICS['overlap']:
                     func_kwargs['tokenizer'] = self.tokenizer
 

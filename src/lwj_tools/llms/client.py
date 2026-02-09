@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
@@ -11,10 +11,11 @@ from omegaconf import DictConfig
 from openai import NOT_GIVEN, OpenAI
 from openai.types.chat.chat_completion import ChatCompletion
 
+from ..date.timer import Timer
 from ..errors import LLMClientError
-from ..utils.constant import LOGGER
-from ..utils.timer import Timer
-from ..utils.tools import get_base64, is_url
+from ..utils.common import get_base64, get_logger, is_url
+
+LOGGER = get_logger('lwj_tools')
 
 
 def encrypted_api_key(api_key: str, keep_size: int = 6) -> str:
@@ -81,6 +82,15 @@ class LLMClient(ClientBase):
         proxy: Optional[Union[Dict, DictConfig]] = None,
         mask_api_key_keep_size: int = 6,
     ):
+        """LLM 客户端
+
+        Args:
+            model:  模型名称
+            api_base: API 基础地址
+            api_key: API 密钥
+            proxy:  代理
+            mask_api_key_keep_size: API 密钥保留长度
+        """
         if isinstance(proxy, DictConfig):
             proxy = dict(proxy)
 
@@ -108,9 +118,10 @@ class LLMClient(ClientBase):
 
     @tasks_num_manage
     def embedding(self, query: str, **kwargs) -> LLMResponse:
-        """get embedding vectors for query
+        """获取嵌入向量进行查询
+
         Args:
-            query: a sentence or chunk
+            query: 待嵌入的文本
         """
         try:
             with Timer() as t:
@@ -144,6 +155,16 @@ class LLMClient(ClientBase):
         timeout: float = 600,
         **kwargs,
     ) -> LLMResponse:
+        """LLM API 调用
+
+        Args:
+            prompt: user prompt
+            system_prompt:   sys prompt
+            history: 对话历史
+            images: 图片链接（可以本地路径）
+            stream: 是否流式返回
+            timeout: 超时时间
+        """
         try:
             messages = self.generate_prompt(
                 prompt=prompt,
@@ -195,12 +216,13 @@ class LLMClient(ClientBase):
         history: Optional[List[Dict[str, str]]] = None,
         images: Optional[List[str]] = None,
     ) -> List[Dict]:
-        """
+        """生成对话轮次
+
         Args:
-            prompt: string for use role
-            system_prompt:  string for system
-            history: dialog history
-            images: if you use the vl model
+            prompt: user prompt
+            system_prompt:   sys prompt
+            history: 对话历史
+            images: 图片链接（可以本地路径）
         """
 
         messages = []
@@ -241,24 +263,33 @@ class LLMClient(ClientBase):
         return messages
 
     def close(self):
+        """关闭客户端"""
         self._client.close()
 
     @property
     def running_tasks_num(self):
+        """正在运行的任务数"""
         return self._running_tasks_num
 
     @property
     def is_deprecated(self):
+        """是否过期"""
         return self.residual_credit <= 0
 
     @property
     def encrypted_api_key(self):
+        """加密后的api key"""
         return self._encrypted_api_key
 
 
 class LLMClientGroup:
 
     def __init__(self, api_configs: List[APIConfig]):
+        """LLM 客户端组
+
+        Args:
+            api_configs: API 配置
+        """
         self.clients = []
         with ThreadPoolExecutor(len(api_configs)) as executor:
             futures = []
@@ -271,11 +302,16 @@ class LLMClientGroup:
 
     @property
     def available_clients(self) -> List[LLMClient]:
+        """可用的客户端"""
         return [client for client in self.clients if not client.is_deprecated]
 
     def find_available_client(
         self, ignored_clients: Optional[List[LLMClient]] = None
     ) -> Optional[LLMClient]:
+        """找到一个可用的客户端
+        Args:
+            ignored_clients: 忽略的客户端
+        """
         if ignored_clients is None:
             ignored_clients = []
 

@@ -2,36 +2,34 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, List, Optional, Union
 
 import numpy as np
+import torch
 import torch.nn as nn
 from torch import Tensor
 
-__all__ = [
-    "calc_model_params",
-    "freeze_model",
-    "unfreeze_model",
-    "clone_module",
-    "data_2_device",
-    "convert_data_to_normal_type",
-]
-
 
 def calc_model_params(model: nn.Module) -> int:
-    """calculate model parameters"""
+    """计算模型可训练参数量
+
+    Args:
+        model: 模型
+
+    Returns:
+        int: 模型可训练参数量
+    """
     model_parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
     total_params = sum([np.prod(p.size()) for p in model_parameters])
     return total_params
 
 
-def freeze_model(model: nn.Module, skip_param_names=None):
-    """
+def freeze_model(model: nn.Module, skip_param_names: Optional[List[str]] = None):
+    """冻结模型参数
+
     Args:
-        model: model to freeze
-        skip_param_names: parameter names to skip.
-                In fact, if you want to skip a block, just give the block name,
-                all the block parameters will be skipped.
+        model: 模型
+        skip_param_names: 要跳过的参数名
     """
     if skip_param_names is None:
         skip_param_names = []
@@ -41,13 +39,12 @@ def freeze_model(model: nn.Module, skip_param_names=None):
         param.requires_grad = False
 
 
-def unfreeze_model(model: nn.Module, skip_param_names=None):
-    """
+def unfreeze_model(model: nn.Module, skip_param_names: Optional[List[str]] = None):
+    """模型参数解冻
+
     Args:
-        model: model to unfreeze
-        skip_param_names: parameter names to skip.
-                In fact, if you want to skip a block, just give the block name,
-                all the block parameters will be skipped.
+        model: 模型
+        skip_param_names: 要跳过的参数名
     """
     if skip_param_names is None:
         skip_param_names = []
@@ -57,12 +54,29 @@ def unfreeze_model(model: nn.Module, skip_param_names=None):
         param.requires_grad = True
 
 
-def clone_module(module, n: int):
-    """clone the module"""
-    return nn.ModuleList([deepcopy(module) for _ in range(n)])
+def clone_module(module: nn.Module, n: int) -> List[nn.Module]:
+    """复制模块
+
+    Args:
+        module: 模块
+        n: 复制的次数
+
+    Returns:
+        List[nn.Module]: 复制的模块
+    """
+    return [deepcopy(module) for _ in range(n)]
 
 
-def data_2_device(data, device):
+def data_2_device(data: Any, device: Union[torch.device, str]) -> Any:
+    """ 尝试将数据（可嵌套）移动到指定的设备
+
+    Args:
+        data: 数据
+        device: 设备
+
+    Returns:
+        Any: 移动到指定设备后的数据
+    """
     if isinstance(data, dict):
         return {k: data_2_device(v, device) for k, v in data.items()}
     elif isinstance(data, Tensor):
@@ -73,7 +87,15 @@ def data_2_device(data, device):
         return data
 
 
-def convert_data_to_normal_type(data: Any):
+def convert_data_to_normal_type(data: Any) -> Any:
+    """尝试将数据（可嵌套）转换为普通的 int float 类型
+
+    Args:
+        data: 数据
+
+    Returns:
+        Any: 转换为普通类型的数据
+    """
     if isinstance(data, (list, tuple)):
         return [convert_data_to_normal_type(item) for item in data]
     elif isinstance(data, dict):

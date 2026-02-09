@@ -5,6 +5,13 @@ BASE_ERROR_CODE = "E100"
 
 
 class BaseError(Exception):
+    """基础错误类
+
+    Args:
+        message: 错误信息
+        code: 错误码
+    """
+
     def __init__(
         self,
         message: str = "",
@@ -21,12 +28,15 @@ class BaseError(Exception):
 
 
 class LLMClientError(BaseError):
+    """llm客户端错误"""
+
     def __init__(self, message: str = ""):
         code = "E201"
         super().__init__(message, code)
 
 
 class PromptTemplateGeneratingError(BaseError):
+    """提示模板生成错误"""
 
     def __init__(self, message: str = ""):
         code = "E202"
@@ -34,6 +44,7 @@ class PromptTemplateGeneratingError(BaseError):
 
 
 class PromptTemplateParsingError(BaseError):
+    """提示模板解析错误"""
 
     def __init__(self, message: str = ""):
         code = "E203"
@@ -41,6 +52,7 @@ class PromptTemplateParsingError(BaseError):
 
 
 class FileTypeError(BaseError):
+    """文件类型错误"""
 
     def __init__(self, message: str = ""):
         code = "E301"
@@ -48,6 +60,7 @@ class FileTypeError(BaseError):
 
 
 class FileReadError(BaseError):
+    """文件读取错误"""
 
     def __init__(self, message: str = ""):
         code = "E302"
@@ -55,6 +68,7 @@ class FileReadError(BaseError):
 
 
 class FileWriteError(BaseError):
+    """文件写入错误"""
 
     def __init__(self, message: str = ""):
         code = "E303"
@@ -62,6 +76,7 @@ class FileWriteError(BaseError):
 
 
 class ConcurrentError(BaseError):
+    """并发错误"""
 
     def __init__(self, message: str = ""):
         code = "E401"

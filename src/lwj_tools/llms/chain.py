@@ -7,6 +7,7 @@ from typing import Any, Dict, Generator, List, Optional, Union
 
 from .client import LLMClient, LLMClientGroup
 from .prompt import PromptTemplate
+from ..date.timer import Timer
 from ..errors import (
     BaseError,
     LLMClientError,
@@ -14,7 +15,6 @@ from ..errors import (
     PromptTemplateParsingError,
     SUCCEED_CODE,
 )
-from ..utils.timer import Timer
 
 warnings.simplefilter(action="once", category=UserWarning)
 
@@ -45,7 +45,7 @@ class ChainResult:
             data_dict["response"] = list(data_dict["response"])
 
         if self.error:
-            data_dict["error"] = self.error.message
+            data_dict["error"] = self.error
 
         return data_dict
 
@@ -57,12 +57,24 @@ class LLMChain:
         prompt_template: PromptTemplate,
         **api_params,
     ):
+        """初始化LLMChain实例
+
+        Args:
+            client_group: 一组LLMClient实例
+            prompt_template: PromptTemplate实例
+            **api_params: 所有调用请求的默认api参数
+        """
         self._client_group = client_group
         self._prompt_template = prompt_template
         self._lock = threading.Lock()
         self._default_api_params = api_params
 
     def _choose_client(self, ignored_clients) -> LLMClient:
+        """选择一个可用的LLMClient实例
+
+        Args:
+            ignored_clients: 忽略的客户端
+        """
         with self._lock:
             client = self._client_group.find_available_client(
                 ignored_clients=ignored_clients,
@@ -72,6 +84,14 @@ class LLMChain:
     def obtain_api_params(
         self, top_p: float, temperature: float, seed: int, **api_params
     ) -> dict:
+        """获取调用请求的api参数
+
+        Args:
+            top_p: 采样参数
+            temperature: 采样参数
+            seed: 随机种子
+            **api_params: 其他api参数
+        """
         new_api_params = {**self._default_api_params}
 
         extra_body = {}
@@ -110,6 +130,24 @@ class LLMChain:
         seed: Optional[int] = None,
         **api_params,
     ) -> ChainResult:
+        """调用LLM模型
+
+        Args:
+            *prompt_tmpl_args: PromptTemplate的参数
+            history (Optional[List[Dict[str, str]]], optional): 对话历史
+            images (Optional[List[str]], optional): 图像路径
+            system_prompt (Optional[str], optional): 系统提示
+            stream (bool, optional): 是否流式返回
+            max_retries (int, optional): 最大重试次数
+            timeout (float, optional): 超时时间
+            top_p (Optional[float], optional): 采样参数
+            temperature (Optional[float], optional): 采样参数
+            seed (Optional[int], optional): 随机种子
+            **api_params: 其他api参数
+
+        Returns:
+            ChainResult: 调用结果
+        """
         chain_result = ChainResult(
             prompt_template=self._prompt_template,
             prompt_args=prompt_tmpl_args,
@@ -170,8 +208,8 @@ class LLMChain:
                 chain_result.status_code = SUCCEED_CODE
                 break
             except (
-                PromptTemplateGeneratingError,
-                PromptTemplateParsingError,
+                    PromptTemplateGeneratingError,
+                    PromptTemplateParsingError,
             ) as e:
                 chain_result.error = e
             except LLMClientError as e:
@@ -230,6 +268,24 @@ class LLMChain:
         seed: Optional[int] = None,
         **api_params,
     ):
+        """调用LLM模型
+
+        Args:
+            *prompt_tmpl_args: PromptTemplate的参数
+            history: 聊天记录
+            images: 图像路径
+            system_prompt: 系统提示
+            stream 是否流式返回
+            max_retries: 最大重试次数
+            timeout: 超时时间
+            top_p: 采样参数
+            temperature: 采样参数
+            seed: 随机种子
+            **api_params: 其他api参数
+
+        Returns:
+            ChainResult: 调用结果
+        """
         return self.invoke(
             *prompt_tmpl_args,
             history=history,

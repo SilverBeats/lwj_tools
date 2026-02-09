@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 import json
 import os
 from abc import ABC, abstractmethod
@@ -14,10 +13,11 @@ from torch.optim.optimizer import Optimizer
 from tqdm import tqdm
 from transformers import SchedulerType, get_scheduler, set_seed
 
-from .constant import LOGGER
-from .io import FileWriter
+from .common import clean_dir, get_logger, rm_dir, rm_file
 from .model import convert_data_to_normal_type, data_2_device
-from .tools import clean_dir, rm_dir, rm_file
+from ..io.writer import FileWriter
+
+LOGGER = get_logger('lwj_tools')
 
 
 @dataclass
@@ -198,12 +198,11 @@ class Stage(Enum):
 
 
 class Trainer(ABC):
-    """
-    1) You can override `build_*_loader` to customize how you build the dataloader
-    2) val_file_path is not necessary,
-    2-1) If you don't set it, the model will be trained until the end
-    2-2) If you set the val_file_path and rewrite the `evaluate_model`,
-        then you can judge the quality of the model according to the gold indicator you set
+    """练手的 trainer，推荐用 Transformers 的 Trainer和 TrainingArguments
+    1) 可以重写‘ build_*_loader ’来自定义构建数据加载器的方式
+    2) val_file_path不是必需的，
+    2-1) 如果不设置，模型会一直训练到最后
+    2-2) 如果你设置了val_file_path并重写了‘ evaluate_model ’，然后，您可以根据您设置的黄金指标来判断模型的质量
     """
 
     MODEL = "model"

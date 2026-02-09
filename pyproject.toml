@@ -22,16 +22,14 @@ dependencies = [
     "regex",
     "omegaconf",
     "httpx",
-    "json-repair",
-    "nltk",
-    "jieba",
-    "rouge",
-    "bert_score"
+    "matplotlib",
+    "seaborn"
 ]
 
 [project.optional-dependencies]
-torch = ["torch"]
-openai = ["openai"]
-ollama = ["ollama"]
+model = ["torch"]
+llms = ["openai"]
+nlgeval = ["torch", "jieba", "rouge", "bert_score", "nltk", "transformers"]
+all = ["openai", "torch", "jieba", "rouge", "bert_score", "nltk", "transformers"]
 
 [tool.setuptools.packages.find]
