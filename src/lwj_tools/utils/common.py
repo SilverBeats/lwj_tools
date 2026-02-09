@@ -11,7 +11,7 @@ import re
 import shutil
 import uuid
 import warnings
-from typing import Any, Callable, Dict, Generator, List, Optional, Pattern, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Pattern, Sequence, Set, Tuple, Union
 from urllib.parse import urlparse
 
 import numpy as np
@@ -351,7 +351,7 @@ def get_unprocessed_samples(
     existed_samples: Optional[List[dict]] = None,
     id_field: str = "index",
     return_iter: bool = False
-) -> Union[List[dict], Generator[dict]]:
+) -> Union[List[dict], Iterator[dict]]:
     """获取未处理的数据样本特别适合API调用场景.
     该函数通过比较原始数据文件和处理后的数据文件，返回未处理的数据样本。
     支持返回列表或生成器格式，便于处理大量数据时的内存优化。
@@ -365,7 +365,7 @@ def get_unprocessed_samples(
         return_iter: True 则返回生成器格式，False返回列表
 
     Returns:
-        Union[List[dict], Generator[dict]]：未处理数据样本
+        Union[List[dict], Iterator[dict]]：未处理数据样本
     """
     assert data_file_path or samples is not None, "请指定 `data_file_path` 或 `samples`"
     assert output_file_path or existed_samples is not None, "请指定 `output_file_path` 或 `existed_samples`"

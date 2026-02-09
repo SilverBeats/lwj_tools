@@ -3,7 +3,7 @@
 import csv
 import json
 import pickle
-from typing import Any, Generator, List, Union
+from typing import Any, Iterator, List, Union
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,7 @@ class FileReader:
 
     @staticmethod
     @ext_check(ext=["jsonl"])
-    def read_jsonl(file_path: str, return_iter: bool = False, **json_kwargs) -> Union[List[Any], Generator[Any]]:
+    def read_jsonl(file_path: str, return_iter: bool = False, **json_kwargs) -> Union[List[Any], Iterator[Any]]:
         """读取jsonl文件
 
         Args:
@@ -56,7 +56,7 @@ class FileReader:
 
     @staticmethod
     @ext_check(ext=["txt"])
-    def read_txt(file_path: str, return_iter: bool = False) -> Union[List[Any], Generator[Any]]:
+    def read_txt(file_path: str, return_iter: bool = False) -> Union[List[Any], Iterator[Any]]:
         """读取txt文件
 
         Args:
@@ -123,7 +123,7 @@ class FileReader:
 
     @staticmethod
     @ext_check(ext=["xlsx", "xls"])
-    def read_large_excel(file_path: str, sheet_name: str = "Sheet1") -> Generator[dict]:
+    def read_large_excel(file_path: str, sheet_name: str = "Sheet1") -> Iterator[dict]:
         wb = load_workbook(file_path, read_only=True)
         ws = wb[sheet_name]
         _iter = ws.iter_rows()
@@ -139,7 +139,7 @@ class FileReader:
         sheet_name: str = "Sheet1",
         return_iter: bool = False,
         return_dict: bool = False,
-    ) -> Union[pd.DataFrame, Generator[dict], List[dict]]:
+    ) -> Union[pd.DataFrame, Iterator[dict], List[dict]]:
         """读取excel文件
 
         Args:
@@ -149,7 +149,7 @@ class FileReader:
             return_dict: 是否返回字典
 
         Returns:
-            pd.DataFrame | Generator[dict] | List[dict]: `return_iter` 为 False 时返回 DataFrame，为 True
+            pd.DataFrame | Iterator[dict] | List[dict]: `return_iter` 为 False 时返回 DataFrame，为 True
             时返回生成器，return_dict 为 True 时返回字典列表
         """
         if return_iter:
@@ -171,7 +171,7 @@ class FileReader:
         return_dict: bool = False,
         has_header: bool = True,
         **pd_kwargs,
-    ) -> Union[pd.DataFrame, Generator[dict], List[dict]]:
+    ) -> Union[pd.DataFrame, Iterator[dict], List[dict]]:
         """读取csv文件
 
         Args:
