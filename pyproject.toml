@@ -5,6 +5,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["lwj_tools*"]
+# 旧版 llms 的备份目录，仅供本地对照参考，不随包发布
+exclude = ["lwj_tools.llms_bak*"]
 
 [tool.setuptools.package-dir]
 "" = "src"
@@ -39,6 +41,7 @@ dependencies = [
     "tqdm",
     "pyyaml",
     "openai>=2.48.0",
+    "torch>=2.8.0",
 ]
 
 [project.optional-dependencies]
