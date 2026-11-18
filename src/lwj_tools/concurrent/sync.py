@@ -17,7 +17,7 @@
 """
 import os
 import traceback
-from abc import ABC, abstractmethod
+from abc import ABC
 from concurrent.futures import Future, as_completed
 from concurrent.futures.process import ProcessPoolExecutor
 from concurrent.futures.thread import ThreadPoolExecutor
@@ -28,7 +28,7 @@ from tqdm import tqdm
 from ..common import get_logger
 from ..errors import ConcurrentError
 
-LOGGER = get_logger("lwj_tools")
+LOGGER = get_logger(__name__)
 
 
 class ConcurrentRunner(ABC):
@@ -86,10 +86,9 @@ class ConcurrentRunner(ABC):
 
         self._worker_func = worker_func or self.worker_func
         self._finished_func = finished_func or self.finished_func
-        
-    @abstractmethod
+
     def worker_func(self, idx: int, sample: Any):
-        """子任务函数。子类必须实现，返回任意可序列化结果。
+        """子任务函数。
 
         Args:
             idx: 当前 sample 在输入列表中的下标。
@@ -202,14 +201,18 @@ class MultiProcessRunner(ConcurrentRunner):
         stop_by_error: bool = False,
         verbose: bool = False,
         need_order: bool = False,
+        worker_func: Optional[Callable] = None,
+        finished_func: Optional[Callable] = None,
     ):
         super().__init__(
             ProcessPoolExecutor,
-            num_workers,
-            use_pbar,
-            stop_by_error,
-            verbose,
-            need_order,
+            num_workers=num_workers,
+            use_pbar=use_pbar,
+            stop_by_error=stop_by_error,
+            verbose=verbose,
+            need_order=need_order,
+            worker_func=worker_func,
+            finished_func=finished_func
         )
 
 
@@ -226,12 +229,16 @@ class MultiThreadingRunner(ConcurrentRunner):
         stop_by_error: bool = False,
         verbose: bool = False,
         need_order: bool = False,
+        worker_func: Optional[Callable] = None,
+        finished_func: Optional[Callable] = None,
     ):
         super().__init__(
             ThreadPoolExecutor,
-            num_workers,
-            use_pbar,
-            stop_by_error,
-            verbose,
-            need_order,
+            num_workers=num_workers,
+            use_pbar=use_pbar,
+            stop_by_error=stop_by_error,
+            verbose=verbose,
+            need_order=need_order,
+            worker_func=worker_func,
+            finished_func=finished_func,
         )
