@@ -199,6 +199,7 @@ cython_debug/
 .cursorindexingignore
 
 .claude
+.codex
 .codegraph
 .mcp.json
 tests
