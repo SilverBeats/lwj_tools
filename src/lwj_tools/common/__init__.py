@@ -34,6 +34,7 @@ from .files import (
 from .ids import get_base64, get_md5_id, get_uuid, is_url
 from .logging import get_logger
 from .math import cosine_similarity
+from .pojo import DictLike
 from .random import random_choice, shuffle
 from .strings import camel_to_snake, str2bool
 
@@ -63,4 +64,6 @@ __all__ = [
     "get_logger",
     # typing
     "FilePath",
+    # pojo
+    "DictLike"
 ]

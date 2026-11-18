@@ -5,6 +5,5 @@
 from os import PathLike
 from typing import Union
 
-
-FilePath = Union[str, PathLike[str]]
 """文件路径：接受字符串或 :class:`os.PathLike`。"""
+FilePath = Union[str, PathLike[str]]

@@ -44,7 +44,7 @@ from tqdm import tqdm
 from ..common import get_logger
 from ..errors import ConcurrentError
 
-LOGGER = get_logger("lwj_tools")
+LOGGER = get_logger(__name__)
 
 
 class AsyncRunner(ABC):
